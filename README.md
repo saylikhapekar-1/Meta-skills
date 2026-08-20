@@ -100,8 +100,3 @@ The `--discovery` flag is optional but strongly recommended: without it, check 5
 | 6 | Reasoning contract | Free-text decisions that cannot be queried or gated |
 | 7 | Termination and budget | Unbounded loops; fallbacks that write |
 
-## Two honest limitations
-
-**Discovery quality bounds everything.** These skills compress the transcription work — turning a known domain into a validated spec. They do not do elicitation: knowing which question to ask, noticing that the written SOP contradicts what staff actually do on a busy Saturday. Feed the discovery step real material (incident logs, exception reports, sample tickets) or it will produce a confident map of a territory nobody surveyed.
-
-**The reasoning summary is a stated rationale, not a trace of computation.** Structuring it into SQLite makes override rates, constraint-block frequency, and confidence calibration into single queries — a real operational win. But a model's account of its own decision is not guaranteed to be faithful to the process that produced it. Use it for audit and ops review confidently; when diagnosing why the model got something wrong, lean on the step-level trace instead.
