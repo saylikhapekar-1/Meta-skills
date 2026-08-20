@@ -1,0 +1,43 @@
+{
+"spec_version":"1.0","agent_name":"park-incident-ops","status":"draft","derived_from":"discovery_report.json",
+"acknowledged_unenforceable":["c3"],
+"tools":[
+ {"id":"check_weather_hold","kind":"read","args":{"park_zone":"string"}},
+ {"id":"get_technician_availability","kind":"read","args":{"zone":"string"}},
+ {"id":"lookup_safety_policy","kind":"read","args":{"incident_type":"string"}},
+ {"id":"create_dispatch","kind":"write","args":{"zone":"string","tech_id":"string"}},
+ {"id":"close_incident","kind":"write","args":{"incident_id":"string"}}],
+"nodes":{
+ "incident":{"input_schema":{"incident_id":"string","zone":"string","incident_type":"string","description":"string"},
+   "required_fields":["incident_id","zone","incident_type"],"on_malformed":"reject_with_reason"},
+ "investigate":{"mode":"sequential","steps":[
+   {"id":"s1","tool":"check_weather_hold","args":{"park_zone":"$incident.zone"},"produces":["weather_hold_active"],"on_failure":"retry_then_gap","max_retries":2},
+   {"id":"s2","tool":"get_technician_availability","args":{"zone":"$incident.zone"},"produces":["technician_available"],"on_failure":"skip_with_gap","max_retries":1},
+   {"id":"s3","tool":"lookup_safety_policy","args":{"incident_type":"$incident.incident_type"},"produces":["safety_policy_tier"],"on_failure":"abort","max_retries":1}],
+  "evidence_gaps_visible_to_decide":true},
+ "decide":{"options":["dispatch_technician","close_as_no_action","escalate_to_supervisor"],
+  "inputs":["weather_hold_active","technician_available","safety_policy_tier"],
+  "confidence_threshold_for_autonomy":0.85,
+  "output_schema":{
+   "chosen_option":{"type":"enum","values":"$options","required":true},
+   "supporting_evidence":{"type":"array[evidence_ref]","required":true},
+   "constraints_checked":{"type":"array[constraint_eval]","required":true},
+   "confidence":{"type":"float","range":[0,1],"required":true},
+   "rejected_alternatives":{"type":"array[{option,reason}]","required":true}}},
+ "human_approval":{"triggers":{"risk_tiers":["high"],"below_confidence":0.85,"on_evidence_gap":true,"on_constraint_unevaluable":true},
+  "reviewer":{"role":"shift_supervisor","channel":"ops_queue"},
+  "payload":["incident","reasoning_summary","evidence","confidence","trigger_reason"],
+  "while_waiting":"hold_open","timeout_minutes":15,"on_timeout":"route_to_manual"},
+ "act":{"actions":[
+  {"id":"dispatch_technician","tool":"create_dispatch","risk_tier":"high","reversible":false,
+   "preconditions":["weather_hold_active == false","technician_available == true"],"rollback":null,"on_failure":"escalate"},
+  {"id":"close_as_no_action","tool":"close_incident","risk_tier":"low","reversible":true,
+   "preconditions":["safety_policy_tier != 'tier_1'"],"rollback":"reopen_incident","on_failure":"escalate"}]}},
+"risk_policy":{"tiers":{"low":{"route":"autonomous"},"medium":{"route":"autonomous_if_confidence_above","threshold":0.9},"high":{"route":"approval_required"}}},
+"constraints":[
+ {"id":"c1","statement":"No dispatch during active weather hold","type":"hard","predicate":"weather_hold_active == false","evaluated_by":"check_weather_hold","blocks_actions":["dispatch_technician"],"on_unevaluable":"escalate_to_human"},
+ {"id":"c2","statement":"Tier-1 safety incidents require supervisor sign-off","type":"hard","predicate":"safety_policy_tier != 'tier_1'","evaluated_by":"lookup_safety_policy","blocks_actions":["close_as_no_action"],"on_unevaluable":"escalate_to_human"}],
+"budgets":{"max_investigate_steps":8,"max_tokens_per_session":60000,"wall_clock_timeout_s":120,
+ "on_step_limit":"escalate_to_human","on_token_limit":"escalate_to_human","on_timeout":"escalate_to_human"},
+"observability":{"sink":"sqlite","tables":{"sessions":[],"steps":[],"decisions":[],"approvals":[],"errors":[]}}
+}
